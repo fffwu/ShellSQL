@@ -1,0 +1,305 @@
+---
+output: word_document
+---
+# STA 141 HWK 6
+## Fan Wu 
+## UNIX Shell Tools
+### i
+```{r}
+ori = function(file){
+  myfile = file[, 15]
+  ori = grep('(OAK|SMF|LAX|SFO|JFK)', myfile, useBytes = T, value = T)
+  table(ori)
+  }
+ext = function(u = my.file){
+  setwd('/Users/FFFFFan/Documents/UCD/FALL2014/STA141/HWK6/Airline2012_131/')
+  u = list.files()
+  myfile = lapply(u, read.csv)
+  tables = lapply(1:12, function(u) ori(myfile[[u]]))
+  # get the sum of a list of matrix in table
+  table = Reduce('+', tables)
+  sort(table, decreasing = T)
+  }
+ext()
+system.time(ext())
+```
+### ii computation
+There are total 1065141 number of flights in and out of the five airports.
+```{r}
+ori.des = read.csv("~/Documents/UCD/FALL2014/STA141/HWK6/Airline2012_13/ori.des1.csv",header = F)
+colnames(ori.des) = c('ORIGIN','DESTINATION')
+#total number of flights
+nrow(ori.des)
+# number of outbond flights for each of 5 airports
+ori1 = grep('(OAK|SMF|LAX|SFO|JFK)', ori.des$ORIGIN, useBytes = T, value = T)
+t1 = table(ori1)
+# number of inbond flights for each of 5 airports
+des1 = grep('(OAK|SMF|LAX|SFO|JFK)', ori.des$DESTINATION, useBytes = T, value = T)
+t2 = table(des1)
+# number of flights for each of 5 airports
+sort(t1+t2, decreasing = T)
+```
+## Baseball, Databases and SQL
+```{r}
+library(DBI)
+library(RSQLite)
+db <- dbConnect(SQLite(), dbname = "~/Documents/UCD/FALL2014/STA141/HWK6/lahman2013.sqlite")
+```
+###1
+The data covers year from 1871 to 2014. There are data for each of these years. 
+```{r}
+dbl = dbListTables(db)
+getpart = function(db, tbl, var){
+  # get all column names var from this table.
+    #
+    # Args:
+    #   db   SQLiteConnection
+    #   tbl  one listed table name in this dataset
+    #   var  column name
+    #
+    # Returns:
+    #   A list of columns names var
+    #   
+  query = paste('SELECT', var, 'FROM ')
+  query = paste0(query, tbl, ';')
+  cat(paste0('Query:', query, '\n'))
+  # Use tryCatch() to catch errors.
+  tryCatch(dbGetQuery(db, query),
+             error = function(e) NULL)
+}
+
+# get all the column names yearID from the dataset db. 
+year = lapply(dbl, getpart, db = db, var = 'yearID')
+year = unlist(year)
+range(year)
+# if the sequence of range of year equal sorted true year in this data, then there is no year missing
+all(range(year)[1]:range(year)[2] == sort(unique(year)))
+```
+###2
+There are total 18359 people included in the database. There are 17841 players and 682 managers, among which 515 are managers but not players and 247 are both manager and player. 
+```{r}
+countid = function(db, dbl, var){
+    # get all column names var from this table.
+    #
+    # Args:
+    #   db   SQLiteConnection
+    #   tbl  table name
+    #   var  column name
+    #
+    # Returns:
+    #   the unmber of unique var
+    # 
+  id = lapply(dbl, getpart, db = db, var = var)
+  id = unlist(id)
+  length(unique(id))
+}
+# count the total number of people
+total = countid(dbl, db = db, var = 'playerid')
+#find which table has the keyword manager
+index_ma = grep('manager', dbl, ignore.case = T)
+#count the total number of manager
+manager = countid(dbl[index_ma], db = db, var = 'playerid')
+#playermanager is 247 and nonplayermanager is 515
+dbGetQuery(db, 'SELECT plyrMgr, count(distinct(playerid)) 
+           FROM Managers 
+           GROUP BY plyrMgr;')
+#count the total number of player+nonplayermanager
+nplay = countid(dbl[-index_ma], db = db, var = 'playerid') 
+#count the number of player
+player = nplay-515
+number = as.table(c(total, player, manager))
+names(number) = c('Total', 'Player', 'Manager')
+number
+```
+###3
+Team St. Louis Cardinals won the World Series in 2000.
+```{r}
+dbListFields(db, "Teams")
+dbGetQuery(db, 'SELECT name 
+           FROM Teams 
+           WHERE yearID = 2011 AND WSWin = "Y";')
+```
+###4
+Team lost the World Series each year is listed below. 
+```{r}
+# World Series started from 1903. 
+# After the team get the league Champion, they can enter World Series 
+dbGetQuery(db, 'SELECT yearID, name 
+           FROM Teams 
+           WHERE WSWin = "N" AND LgWin = "Y" AND yearID >= 1903;')
+```
+###5
+From the grouped density plot below, we can get the number of wins in season for winner of World Series is relatively larger than losers. When wins in season is less than 50, then this team has high probability to lose the World Series since it cannot enter the World Series. If wins in season is more than 80, then this team has much more chance to win the World Series. 
+```{r}
+library(lattice)
+sws = dbGetQuery(db, 'SELECT W, WSWin 
+                 FROM Teams;')
+# plot the density plot grouped by Y or N of Win of World Series
+densityplot(sws$W, groups=sws$WSWin, xlab = 'wins in season',plot.points = FALSE, auto.key = list(space = "right"), main = 'wins gamws in a season and World Series')
+```
+###6
+22000000, 20000000 and 18700000 are the highest salaries in 2003.  
+```{r}
+#Get distinct salary of 2003 from the table Salaries
+salary = dbGetQuery(db, 'SELECT DISTINCT salary  
+                 FROM Salaries
+                 WHERE yearID = 2003
+                 ORDER BY salary DESC;')
+salary[[1]][1:3]
+```
+###7
+For 1999, the total payroll of each of the different teams and plot are shown below.
+From the plor, we can get that the team New York Yankees has the highest total payroll in 1999. Others are much lower than it. 
+```{r}
+# Since there is no chance for a team to change teamID in a year, 
+# we look at the full name. 
+# Joint Table Teams and Salaries to get pair of team full names and the total payroll
+salary1999 = dbGetQuery(db,'SELECT b.NAME, SUM(a.SALARY)
+             FROM Salaries AS a
+             LEFT JOIN Teams AS b
+             ON a.teamID = b.teamID
+             WHERE a.yearID = 1999
+             GROUP BY b.NAME;')
+#plot total salary corresponding to team Full name. 
+dotplot(salary1999[[1]]~salary1999[[2]], xlab = 'Team Total Salary', auto.key = list(space = "right"), type = 'h', ylab = 'Team Name', main = 'Total Team Payroll in 1999')
+```
+The annually team payroll and the plot are shown below. 
+From the plot we can get Team does not have the same payroll over the years. Team does not have payroll every year. 
+```{r}
+#Count total team payroll for all the years
+salaryteam = dbGetQuery(db,'SELECT a.yearid, b.NAME, SUM(a.SALARY)
+                        FROM Salaries AS a
+                        LEFT JOIN Teams AS b
+                        ON a.teamID = b.teamID
+                        GROUP BY b.NAME, a.YEARID
+                        ORDER BY a.YEARID, SUM(a.SALARY) DESC;')
+# plot total team payroll and team ID grouped by year
+dotplot(salaryteam[[2]]~salaryteam[[3]], 
+        group = salaryteam[[1]], 
+        xlab = 'Team Salary', 
+        auto.key = list(space = "right"), 
+        type = 'p', 
+        ylab = 'Team ID',
+        par.settings = simpleTheme(col = rainbow(29)),
+        main = 'Annually Team Payroll')
+```
+###8
+From the plot below, we can get Salary over time grown faster. 
+```{r}
+# save the YEAR and annually salary from the Web downloading xsl as a txt file 
+annually.CPI <- read.delim("~/Documents/UCD/FALL2014/STA141/HWK6/annually CPI.txt")
+#Choose 1985 as the base year and use average salary
+annually.CPI$CPIrate = annually.CPI[[2]][1]/annually.CPI[2]
+# We use average salary over all the years instead of total payoff, 
+# since if there more teams appear to be in a year, 
+# then the total payoff will be more, 
+# making total payoff less comparative. 
+avgsalary = dbGetQuery(db,'SELECT yearID, AVG(SALARY)
+           FROM Salaries
+           GROUP BY yearID;')
+# get the real salary 
+realsalary = avgsalary[[2]]*annually.CPI$CPIrate
+xyplot(unlist(realsalary)~avgsalary$yearID, 
+       type = 'b', 
+       xlab = 'Year', 
+       auto.key = list(space = "right"), 
+       ylab = 'Average annualy salay', 
+       main = 'Change in salary')
+```
+###9
+Plot for the same leagues and the same division are shown below. 
+We find that one Team called Milwaukee Brewers has payroll for both leagues, indicating it used to change the leagues. Looking into the data, we find it change from AL to Nl in 1998. 
+We also find that several team, such as St.Louis Cardinals, Philadelphia Phillies and Minnesota Twins, have payroll in more than one division, indicating they used to change divisions over the years. Team Milwaukee Brewers has 3 payroll, meaning it changed among AL-E, AL-W and NL-C over the years. Some such as St. Louis Perfectos do not have any payroll for any division althought it has league. 
+All in all, team may not hold league and division constant all the time. 
+```{r}
+# get team name, LgID and total salary  for every pair of lgID and teamID
+# According to the same reason, we use average salary.
+lg_pay = dbGetQuery(db,'SELECT b.NAME, a.lgID, SUM(a.SALARY)
+                    FROM Salaries AS a
+                    LEFT JOIN Teams AS b
+                    ON a.teamID = b.teamID
+                    GROUP BY a.LgID, b.name;')
+dotplot(name~lg_pay[[3]], 
+        group = lgID, 
+        data = lg_pay, 
+        type = 'p', 
+        auto.key = list(space = "right"), 
+        xlab = 'Average Payroll', 
+        main = 'Average Payroll and teamID by Leagues')
+# identify change of league of teamid HOU. 
+dbGetQuery(db, 'SELECT yearID, NAME, TEAMID, divID, LgID 
+           FROM Teams
+           WHERE NAME = "Milwaukee Brewers";')
+# get team name, LgID, divID and total salary  for every level of DivID, lgID and teamID
+div_pay = dbGetQuery(db,'SELECT b.NAME, b.LgID, b.DivID, AVG(a.SALARY)
+                    FROM Salaries AS a
+                    LEFT JOIN Teams AS b
+                    ON a.teamID = b.teamID
+                    GROUP BY b.DivID, b.LgID, b.NAME;')
+# plot payoff with team name divided by lengue ID and grouped by division ID 
+dotplot(name~div_pay[[4]]|lgID, 
+        group = divID, 
+        data = div_pay, 
+        auto.key = list(space = "right"), 
+        xlab = 'Average Payroll', type = 'p')
+```
+From the year vs. Total Payroll plot below, we can get general idea that the dot with dark blue always rank first. 
+From the table for rank 1, we can get that team New York Yankees has most frequencies, which is 17 out of 29, more than 50%. New York Yankees has always had top payrolls over the years.  
+```{r}
+# split the data by year
+sal1 = split(salaryteam, salaryteam[[1]])
+# the data is already in order of decreasing payroll, 
+# we get frequency table of rank 1. 
+sal2 = lapply(1:length(sal1), function(u) sal1[[u]][1, 2])
+table(unlist(sal2))
+sum(table(unlist(sal2)))
+# Use the data we get from part 2 of prob 8
+dotplot(yearID~salaryteam[[3]], 
+        group = name, 
+        data = salaryteam, 
+        auto.key = list(space = "right"), 
+        xlab = 'Total Payroll',
+        par.settings = simpleTheme(col = rainbow(52)))
+```
+There is a connection between payroll and performance. More pay is, Better performance will be. 
+```{r}
+pay_perf = dbGetQuery(db,'SELECT a.yearid, b.NAME, b.Rank, AVG(a.SALARY)
+                      FROM Salaries AS a
+                      LEFT JOIN Teams AS b
+                      ON a.yearid = b.yearid
+                      GROUP BY a.yearid, b.NAME
+                      ORDER BY a.yearid, b.Name;')
+xyplot(pay_perf$Rank~pay_perf$yearID|pay_perf$name,
+       type = 'l')
+pay_perf = dbGetQuery(db,'SELECT a.yearid, b.NAME, b.Rank, AVG(a.SALARY)
+                      FROM Salaries AS a
+                      LEFT JOIN Teams AS b
+                      ON a.teamid = b.teamid
+                      GROUP BY a.yearid, b.NAME
+                      ORDER BY a.yearid, b.Name;')
+xyplot(pay_perf[[4]]~pay_perf$yearID|pay_perf$name,
+       type = 'l', ylab = 'Total Payoff', main = 'Total Team Payoff Over the Years')
+```
+
+###10
+
+Since the sum of each players' home runs in a team of one year equal to team's home runs of this year, I look at team instead of each players. 
+Since when the total number of games every year increases, making Home runs have more probability to increase, I use the ratio = HR/G to represent the distribution of home runs. I use average ratio among all the team every year to plot the distribution of ratio corresponding to year.
+If average ratio increases, then it means home run increases. 
+The first plot shows the distribution of home runs fluctuates over the years. In general, it has increased over the years from ratio below 0.2 to ratio over 1. 
+
+```{r}
+# Get pair of HR and G for each team in each year
+hr_plyr = dbGetQuery(db,'SELECT yearID, HR, G
+                 FROM Teams 
+                 GROUP BY yearid, teamID;')
+#Get the HR/G ratio of each team in each year
+hr_plyr$rate = hr_plyr[[2]]/hr_plyr[[3]]
+# split the data by year
+h_plyr = split(hr_plyr[4], hr_plyr[1])
+# get the average ratio for every year
+ratio = sapply(1:length(h_plyr), function(u) mean(h_plyr[[u]][,1]))
+# plot the average ratio with year
+xyplot(ratio~unique(hr_plyr$yearID), auto.key = list(space = "right"), type = 'l', main = 'Distribution of ratio over the years', col = 'red')
+```
+
